@@ -1,9 +1,12 @@
 package utile
 
 import (
+	"errors"
 	fmt "fmt"
-	log "github.com/sirupsen/logrus"
 	os "os"
+
+	log "github.com/sirupsen/logrus"
+	"golang.org/x/exp/rand"
 )
 
 func Unfiniched(me string) string {
@@ -23,9 +26,39 @@ func PathIsExist(p_path string) (bool, error) {
 		return true, nil
 
 	} else if os.IsNotExist(err) {
-		log.Infoln("\n\tFile does not exist")
-		return false, nil
+		log.Infoln("\n\tFile does not exist")   
+		return false, nil  
 	}
  
-	return false, err
+	return false, err  
+}
+ 
+
+func SplitSlice(slice []int, numChunks int) ([][]int , error ) {
+
+
+	if len(slice) == 0 {
+		err := fmt.Sprintln("The slice is empty") 
+		log.Error(err) 
+		return [][]int{{}}, errors.New(err)
+	} 
+
+	var chunks [][]int
+	chunkSize := (len(slice) + numChunks - 1) / numChunks // Ceiling of len(slice) / numChunks
+
+	for i := 0; i < len(slice); i += chunkSize {
+		end := i + chunkSize
+		if end > len(slice) {
+			end = len(slice)
+		}
+		chunks = append(chunks, slice[i:end])
+	}
+
+	return chunks , nil
+}
+
+
+func RandomIntByRange(TheMin int,TheMax int) int {
+	return rand.Intn(TheMax-TheMin+1) + TheMin
+ 
 }
