@@ -30,12 +30,16 @@ type Packet struct {
 }
 
 type FILE struct {
-	Url     string `json:"url"`
-	Output  string `json:"output"`
-	Packets []Packet
+	Output  string `json:"output" binding:"required"`
+	Url     string `json:"url" binding:"required"`
+	Packets []Packet 
 }
 
-func (me *FILE) readFromJson(path string) error {
+
+
+// TODO: change the formate of the MetaData 
+
+func (me *FILE) readFromMetaData(path string) error {
 
 	file, err := os.Open(path)
 	if err != nil {
@@ -62,7 +66,7 @@ func (me *FILE) readFromJson(path string) error {
 }
 
 // Method to marshal the FILE struct to JSON and write it to a file
-func (me *FILE) writeToAJson(path string) error {
+func (me *FILE) writeToAMetaData(path string) error {
 
 	file, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0755)
 	if err != nil {
@@ -82,35 +86,6 @@ func (me *FILE) writeToAJson(path string) error {
 		return err
 	}
 	log.Infoln("\n\twrite into ", me.Output)
-	return nil
-}
-
-// Constructor initializes the FILE struct
-func (me *FILE) Constructor(url_p string, name_p string, path_p *string) error {
-	if !strings.HasPrefix(url_p, "http://") && !strings.HasPrefix(url_p, "https://") {
-		return errors.New("invalid URL")
-	}
-
-	me.Url = url_p
-
-	if path_p == nil {
-		me.Output = DEFAULT_DOWNLOAD_PATH + name_p
-	} else {
-		me.Output = (*path_p) + "/" + name_p
-	}
-
-	// Ensure the directory exists
-	dir := strings.TrimSuffix(me.Output, "/"+name_p)
-	if err := os.MkdirAll(dir, os.ModePerm); err != nil {
-		return fmt.Errorf("error creating directory: %v", err)
-	}
-
-	return nil
-}
-
-func (me *FILE) finishIt() error {
-	os.Rename(utile.Unfiniched(me.Output), me.Output)
-	os.Remove(utile.Cfgjson(me.Output))
 	return nil
 }
 
@@ -168,13 +143,42 @@ func (me *FILE) mkeConfig(numThreads int) error {
 
 	}
 
-	if err := me.writeToAJson(utile.Cfgjson(me.Output)); err != nil {
+	if err := me.writeToAMetaData(utile.Cfgjson(me.Output)); err != nil {
 		log.Errorln("\n\t", err.Error())
 	}
 	if err := cfg.Close(); err != nil {
 		log.Errorln(err.Error())
 		return err
 	}
+	return nil
+}
+
+// Constructor initializes the FILE struct
+func (me *FILE) Constructor(url_p string, name_p string, path_p *string) error {
+	if !strings.HasPrefix(url_p, "http://") && !strings.HasPrefix(url_p, "https://") {
+		return errors.New("invalid URL")
+	}
+
+	me.Url = url_p
+
+	if path_p == nil {
+		me.Output = DEFAULT_DOWNLOAD_PATH + name_p
+	} else {
+		me.Output = (*path_p) + "/" + name_p
+	}
+
+	// Ensure the directory exists
+	dir := strings.TrimSuffix(me.Output, "/"+name_p)
+	if err := os.MkdirAll(dir, os.ModePerm); err != nil {
+		return fmt.Errorf("error creating directory: %v", err)
+	}
+
+	return nil
+}
+
+func (me *FILE) finishIt() error {
+	os.Rename(utile.Unfiniched(me.Output), me.Output)
+	os.Remove(utile.Cfgjson(me.Output))
 	return nil
 }
 
@@ -260,12 +264,12 @@ func (me *FILE) downloadchunk(chunk []int, wg *sync.WaitGroup) error {
 			log.Warnln("The packe is samhow downloaded")
 		}
 	}
-	// me.writeToAJson(utile.Cfgjson(me.Output))
+	// me.writeToAMetaData(utile.Cfgjson(me.Output))
 	return nil
 }
 func (me *FILE) download(numThreads int) error {
 
-	if err := me.readFromJson(utile.Cfgjson(me.Output)); err != nil {
+	if err := me.writeToAMetaData(utile.Cfgjson(me.Output)); err != nil {
 		log.Errorln("\n\t", err.Error())
 		return err 
 	}
@@ -291,7 +295,7 @@ func (me *FILE) download(numThreads int) error {
 
 	}
 	wg.Wait()
-	me.writeToAJson(utile.Cfgjson(me.Output))
+	me.writeToAMetaData(utile.Cfgjson(me.Output))
 
 	return me.finishIt()
 
@@ -306,7 +310,7 @@ func (me *FILE) download(numThreads int) error {
 	// 			return err
 	// 		} else {
 	// 			me.Packets[index].Done = true
-	// 			if err := me.writeToAJson(utile.Cfgjson(me.Output)); err != nil {
+	// 			if err := me.writeToAMetaData(utile.Cfgjson(me.Output)); err != nil {
 	// 				return err
 	// 			}
 	// 		}
@@ -327,7 +331,7 @@ func (me *FILE) Download(numThreads int) error {
 		}
 	}
 
-	me.readFromJson(utile.Cfgjson(me.Output))
+	me.writeToAMetaData(utile.Cfgjson(me.Output))
 
 	if err := me.download(numThreads); err != nil {
 		log.Errorln("\n\t", err.Error())
@@ -385,7 +389,6 @@ func (me *FILE) Download(numThreads int) error {
 
 	return nil
 }
-
 func (me *FILE) getReminderPacket() []int {
 	result := make([]int, 0)
 	for index, packet := range me.Packets {
