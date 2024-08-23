@@ -7,16 +7,10 @@ import (
 
 	log "github.com/sirupsen/logrus"
 	"golang.org/x/exp/rand"
+ 	
+	"time"
 )
-
-func Unfiniched(me string) string {
-	return me + ".unfiniched"
-}
-
-func Cfgjson(me string) string {
-	return me + ".cfg.json"
-}
-
+ 
 func PathIsExist(p_path string) (bool, error) {
 
 	log.Infoln(fmt.Sprintf("\n\tTesting If the File %s exist ", p_path))
@@ -57,8 +51,22 @@ func SplitSlice(slice []int, numChunks int) ([][]int , error ) {
 	return chunks , nil
 }
 
-
+func Min(x, y int) int {
+	if x < y {
+		return x
+	}
+	return y
+}
+func Max(x, y int) int {
+	if x > y {
+		return x
+	}
+	return y
+}
 func RandomIntByRange(TheMin int,TheMax int) int {
-	return rand.Intn(TheMax-TheMin+1) + TheMin
+    rand.Seed(uint64(time.Now().UnixNano()))
+    
+    // Generate a random number within the specified range
+    return int(rand.Intn((TheMax-TheMin+1))) + TheMin
  
 }

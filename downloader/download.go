@@ -7,6 +7,7 @@ import (
 	"io/ioutil"
 	"sync"
 
+	"github.com/google/uuid"
 	"github.com/mohammedaouamri5/JDM-back/utile"
 	log "github.com/sirupsen/logrus"
 
@@ -30,16 +31,23 @@ type Packet struct {
 }
 
 type FILE struct {
+	Id      uuid.UUID
 	Output  string `json:"output" binding:"required"`
 	Url     string `json:"url" binding:"required"`
-	Packets []Packet 
+	Packets []Packet
 }
 
+func Unfiniched(me FILE) string {
+	return "./data/" + me.Id.String() + ".unfiniched"
+}
 
+func Cfgjson(me FILE) string {
+	return "./data/" + me.Id.String() + ".cfg.json"
+}
 
-// TODO: change the formate of the MetaData 
+// TODO: change the formate of the MetaData
 
-func (me *FILE) readFromMetaData(path string) error {
+func (me *FILE) ReadFromMetaData(path string) error {
 
 	file, err := os.Open(path)
 	if err != nil {
@@ -60,7 +68,6 @@ func (me *FILE) readFromMetaData(path string) error {
 	if err != nil {
 		return err
 	}
-	log.Infoln(fmt.Sprintf("\n\t%+v", me))
 
 	return nil
 }
@@ -91,14 +98,14 @@ func (me *FILE) writeToAMetaData(path string) error {
 
 func (me *FILE) mkeConfig(numThreads int) error {
 	log.Infoln("\n\tmkeConfig")
-	cfg, err := os.Create(utile.Cfgjson(me.Output))
+	cfg, err := os.Create(Cfgjson(*me))
 
 	if err != nil {
 		log.Errorln("\n\terror creating output file: ", err.Error())
 		return err
 	}
 
-	Unf, err := os.Create(utile.Unfiniched(me.Output))
+	Unf, err := os.Create(Unfiniched(*me))
 
 	if err != nil {
 		log.Errorln("\n\terror creating output file: ", err.Error())
@@ -130,20 +137,23 @@ func (me *FILE) mkeConfig(numThreads int) error {
 		return err
 	}
 
-	segmentSize := int(math.Ceil(float64(contentLength) / float64(numThreads)))
+	// 	segmentSize :=    int(math.Ceil(float64(contentLength) / float64(numThreads)))
 
-	for i := 0; i < numThreads; i++ {
+	segmentSize := 1_000_000
+	segmentNb_ := int(math.Ceil(math.Ceil(float64(contentLength) / float64(segmentSize))))
 
+	for i := 0; i < segmentNb_; i++ {
 		start := segmentSize * i
 		end := start + segmentSize - 1
-		if i == numThreads-1 {
+		if i == segmentNb_-1 {
 			end = contentLength - 1
 		}
 		me.Packets = append(me.Packets, Packet{Start: start, End: end, Done: false})
-
 	}
 
-	if err := me.writeToAMetaData(utile.Cfgjson(me.Output)); err != nil {
+	log.Infoln("The Packes Are Created", len(me.Packets))
+
+	if err := me.writeToAMetaData(Cfgjson(*me)); err != nil {
 		log.Errorln("\n\t", err.Error())
 	}
 	if err := cfg.Close(); err != nil {
@@ -158,27 +168,25 @@ func (me *FILE) Constructor(url_p string, name_p string, path_p *string) error {
 	if !strings.HasPrefix(url_p, "http://") && !strings.HasPrefix(url_p, "https://") {
 		return errors.New("invalid URL")
 	}
-
 	me.Url = url_p
-
 	if path_p == nil {
-		me.Output = DEFAULT_DOWNLOAD_PATH + name_p
+		me.Output = utile.InfoS.PATH + name_p
 	} else {
 		me.Output = (*path_p) + "/" + name_p
 	}
-
 	// Ensure the directory exists
 	dir := strings.TrimSuffix(me.Output, "/"+name_p)
 	if err := os.MkdirAll(dir, os.ModePerm); err != nil {
 		return fmt.Errorf("error creating directory: %v", err)
 	}
-
+	me.Id = uuid.New()
 	return nil
 }
 
 func (me *FILE) finishIt() error {
-	os.Rename(utile.Unfiniched(me.Output), me.Output)
-	os.Remove(utile.Cfgjson(me.Output))
+
+	os.Rename(Unfiniched(*me), me.Output)
+	// os.Remove(Cfgjson(*me))
 	return nil
 }
 
@@ -186,19 +194,16 @@ func (me *FILE) finishIt() error {
 func (me *FILE) downloadRange(start, end int) error {
 
 	log.Infoln(fmt.Sprintf("start download range %d -> %d", start, end))
-	out, err := os.OpenFile(utile.Unfiniched(me.Output), os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0755)
-
+	out, err := os.OpenFile(Unfiniched(*me), os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0755)
 	if err != nil {
 		log.Error(err.Error())
 		return err
 	}
 	defer out.Close()
-
 	retries := 5
 	client := &http.Client{
 		Timeout: 30 * time.Second,
 	}
-
 	for attempts := 0; attempts <= retries; attempts++ {
 		req, err := http.NewRequest("GET", me.Url, nil)
 		if err != nil {
@@ -207,40 +212,42 @@ func (me *FILE) downloadRange(start, end int) error {
 		}
 		rangeHeader := fmt.Sprintf("bytes=%d-%d", start, end)
 		req.Header.Set("Range", rangeHeader)
-
 		resp, err := client.Do(req)
 		if err != nil {
 			log.Warn(fmt.Sprintf("Error executing request (attempt %d/%d): %v\n", attempts+1, retries, err))
 			time.Sleep(time.Second * time.Duration(attempts+1+utile.RandomIntByRange(-5, 5)))
 			continue
 		}
-		defer resp.Body.Close()
 
+		defer resp.Body.Close()
 		if resp.StatusCode != http.StatusPartialContent {
 			log.Printf("Unexpected status code: %d\n", resp.StatusCode)
-			return errors.New(fmt.Sprint("Unexpected status code: %d\n", resp.StatusCode))
+			return errors.New(fmt.Sprintf("Unexpected status code: %d", resp.StatusCode))
 		}
-
 		if _, err := out.Seek(int64(start), io.SeekStart); err != nil {
 			log.Println("Error seeking in FILE:", err)
 			return errors.New(fmt.Sprint("Error seeking in FILE:", err))
 		}
 
-		for i := 0; i < 5; i++ {
+		max_i := 5
+		done := false
+		for i := 0; i < max_i; i++ {
 			if _, err := io.Copy(out, resp.Body); err != nil {
 				attempts := i + 1
-				waiting_time := attempts + utile.RandomIntByRange(-attempts/2, attempts/2)
-				log.Infoln("waiting", waiting_time, "\n")
-				time.Sleep(time.Second * time.Duration(attempts+utile.RandomIntByRange(-5, 5)))
-				log.Errorln(fmt.Sprintf("Error copying data (attempt %d/%d): %v\n", attempts, 5, err))
+				waiting_time := (time.Second * time.Duration(attempts+utile.RandomIntByRange(-max_i, max_i)))
+				log.Infoln("waiting", waiting_time)
+				time.Sleep(waiting_time)
+				log.Warnln(fmt.Sprintf("Error copying data (attempt %d/%d): %v\n", attempts, max_i, err))
 			} else {
-				i = 10
+				i = max_i + 2
+				done = true
 			}
 		}
-		
-
-		log.Infoln(fmt.Sprintf("Downloaded bytes %d-%d\n", start, end))
-
+		if done {
+			log.Infoln(fmt.Sprintf("Downloaded bytes %d-%d\n", start, end))
+		} else {
+			log.Trace(fmt.Sprintf("can't download bytes %d-%d\n", start, end))
+		}
 		return nil
 	}
 	errmsg := fmt.Sprintf("Failed to download bytes %d-%d after %d attempts\n", start, end, retries+1)
@@ -250,28 +257,28 @@ func (me *FILE) downloadRange(start, end int) error {
 
 func (me *FILE) downloadchunk(chunk []int, wg *sync.WaitGroup) error {
 	defer wg.Done()
+	log.Infoln(fmt.Sprintf("Downloading chunk of %d lenght ", len(chunk)))
 	for _, index := range chunk {
 		packet := me.Packets[index]
-		log.Infoln(fmt.Sprintf("The index %d  of %v ", index, chunk))
 		if !packet.Done {
 			if err := me.downloadRange(packet.Start, packet.End); err != nil {
 				log.Errorln(err.Error())
 				return err
 			} else {
 				me.Packets[index].Done = true
+				go me.writeToAMetaData(Cfgjson(*me))
 			}
 		} else {
 			log.Warnln("The packe is samhow downloaded")
 		}
 	}
-	// me.writeToAMetaData(utile.Cfgjson(me.Output))
 	return nil
 }
 func (me *FILE) download(numThreads int) error {
 
-	if err := me.writeToAMetaData(utile.Cfgjson(me.Output)); err != nil {
+	if err := me.writeToAMetaData(Cfgjson(*me)); err != nil {
 		log.Errorln("\n\t", err.Error())
-		return err 
+		return err
 	}
 
 	ReminderPacket := me.getReminderPacket()
@@ -280,7 +287,9 @@ func (me *FILE) download(numThreads int) error {
 		me.finishIt()
 		return nil
 	}
+
 	chunks, err := utile.SplitSlice(ReminderPacket, numThreads)
+
 	if err != nil {
 		log.Errorln(err.Error())
 		return err
@@ -288,40 +297,26 @@ func (me *FILE) download(numThreads int) error {
 
 	// the actual downlowd
 	var wg sync.WaitGroup
-	wg.Add(numThreads)
+	count := 0
+	for _, chunk := range chunks {
+		if len(chunk) > 0 {
+			count++
+		}
+	}
+	wg.Add(utile.Min(numThreads, count ))
 
 	for _, chunk := range chunks {
 		go me.downloadchunk(chunk, &wg)
-
 	}
 	wg.Wait()
-	me.writeToAMetaData(utile.Cfgjson(me.Output))
+	log.Infoln(14)
+	me.writeToAMetaData(Cfgjson(*me))
 
 	return me.finishIt()
-
-	// for index, packet := range me.Packets {
-	// 	if !me.Packets[index].Done {
-	// 		if err := me.downloadRange(
-	// 			unf,
-	// 			packet.Start,
-	// 			packet.End,
-	// 		); err != nil {
-	// 			log.Errorln("\n\t", err.Error())
-	// 			return err
-	// 		} else {
-	// 			me.Packets[index].Done = true
-	// 			if err := me.writeToAMetaData(utile.Cfgjson(me.Output)); err != nil {
-	// 				return err
-	// 			}
-	// 		}
-	// 	}
-	// }
-
-	return nil
 }
-func (me *FILE) Download(numThreads int) error {
 
-	if IsExist, err := utile.PathIsExist(utile.Cfgjson(me.Output)); err != nil {
+func (me *FILE) MkeConfig(numThreads int) error {
+	if IsExist, err := utile.PathIsExist(Cfgjson(*me)); err != nil {
 		log.Errorln("\n\t", err.Error())
 		return err
 	} else if !IsExist {
@@ -330,65 +325,22 @@ func (me *FILE) Download(numThreads int) error {
 			return err
 		}
 	}
+	me.writeToAMetaData(Cfgjson(*me))
+	return nil
+}
 
-	me.writeToAMetaData(utile.Cfgjson(me.Output))
+func (me *FILE) Download(numThreads int) error {
+
+	me.MkeConfig(numThreads)
 
 	if err := me.download(numThreads); err != nil {
+
 		log.Errorln("\n\t", err.Error())
+
 		return err
 	}
 	return nil
-
-	// if _, err := os.Stat(me.Output); err == nil {
-	//     fmt.Println("File exists")
-	//     return nil
-	// } else if os.IsNotExist(err) {
-	//     if  _, err := os.Stat(utile.Unfiniched(me.Output)); err == nil {
-	//         fmt.Println("File exists")
-	//     } else if os.IsNotExist(err) {
-	//         fmt.Println("File does not exist")
-	//     } else {
-	//         fmt.Println("Error checking file:", err)
-	//     }
-	//     me.mkeConfig(numThreads)
-	//     } else {
-	//     fmt.Println("Error checking file:", err)
-	// }
-	// out, err := os.Create(me.Output)
-	// if err != nil {
-	// 	return fmt.Errorf("error creating output file: %v", err)
-	// }
-	// defer out.Close()
-	// resp, err := http.Head(me.Url)
-	// if err != nil {
-	// 	return fmt.Errorf("error getting head request: %v", err)
-	// }
-	// defer resp.Body.Close()
-	// if resp.Header.Get("Accept-Ranges") != "bytes" {
-	// 	return  errors.New("server does not support range requests")
-	// }
-	// contentLength, err := strconv.Atoi(resp.Header.Get("Content-Length"))
-	// if err != nil {
-	// 	return fmt.Errorf("failed to get content length: %v", err)
-	// }
-	// segmentSize := int(math.Ceil(float64(contentLength) / float64(numThreads)))
-	// var wg sync.WaitGroup
-	// wg.Add(numThreads)
-	// var packet  []Packet
-	// for i := 0; i < numThreads; i++ {
-	// 	start := segmentSize * i
-	// 	end := start + segmentSize - 1
-	// 	if i == numThreads-1 {
-	// 		end = contentLength - 1
-	// 	}
-	//     packet = append(packet, Packet{Start: start , End: end , Done : false})
-	// }
-	// // go me.downloadRange(out, start, end, &wg, 3)
-	// wg.Wait()
-	// fmt.Println("All workers done")
-
-	return nil
-}
+} 
 func (me *FILE) getReminderPacket() []int {
 	result := make([]int, 0)
 	for index, packet := range me.Packets {
