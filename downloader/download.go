@@ -31,10 +31,12 @@ type Packet struct {
 }
 
 type FILE struct {
-	Id      uuid.UUID
+	Id      uuid.UUID `json:"ID" binding:"required"`
 	Output  string `json:"output" binding:"required"`
 	Url     string `json:"url" binding:"required"`
 	Packets []Packet
+	IsDone bool 
+	IsPause bool 
 }
 
 func Unfiniched(me FILE) string {
@@ -42,14 +44,14 @@ func Unfiniched(me FILE) string {
 }
 
 func Cfgjson(me FILE) string {
-	return "./data/" + me.Id.String() + ".cfg.json"
+	return "./data/" + me.Id.String() + ".json"
 }
 
 // TODO: change the formate of the MetaData
 
 func (me *FILE) ReadFromMetaData(path string) error {
 
-	file, err := os.Open(path)
+	file, err := os.OpenFile(path, os.O_RDONLY, 0755)
 	if err != nil {
 		log.Errorln(err.Error())
 		return err
@@ -68,7 +70,7 @@ func (me *FILE) ReadFromMetaData(path string) error {
 	if err != nil {
 		return err
 	}
-
+	log.Info("read from ", me.Output)
 	return nil
 }
 
@@ -166,25 +168,29 @@ func (me *FILE) mkeConfig(numThreads int) error {
 // Constructor initializes the FILE struct
 func (me *FILE) Constructor(url_p string, name_p string, path_p *string) error {
 	if !strings.HasPrefix(url_p, "http://") && !strings.HasPrefix(url_p, "https://") {
-		return errors.New("invalid URL")
+		return errors.New("invalid URL");
 	}
-	me.Url = url_p
+	me.Url = url_p;
 	if path_p == nil {
-		me.Output = utile.InfoS.PATH + name_p
+		me.Output = utile.InfoS.PATH + name_p;
 	} else {
-		me.Output = (*path_p) + "/" + name_p
+		me.Output = (*path_p) + "/" + name_p;
 	}
 	// Ensure the directory exists
-	dir := strings.TrimSuffix(me.Output, "/"+name_p)
+	dir := strings.TrimSuffix(me.Output, "/"+name_p);
 	if err := os.MkdirAll(dir, os.ModePerm); err != nil {
-		return fmt.Errorf("error creating directory: %v", err)
+		return fmt.Errorf("error creating directory: %v", err);
 	}
-	me.Id = uuid.New()
+	me.Id = uuid.New(); 
+	me.IsDone = false;   
+	me.IsPause = false;   
+
 	return nil
 }
 
 func (me *FILE) finishIt() error {
-
+	me.IsDone = true
+	me.writeToAMetaData(Cfgjson(*me))
 	os.Rename(Unfiniched(*me), me.Output)
 	// os.Remove(Cfgjson(*me))
 	return nil
@@ -193,8 +199,13 @@ func (me *FILE) finishIt() error {
 // func (me *FILE) downloadRange(out *os.File, start, end int, wg *sync.WaitGroup, retries int) {
 func (me *FILE) downloadRange(start, end int) error {
 
-	log.Infoln(fmt.Sprintf("start download range %d -> %d", start, end))
-	out, err := os.OpenFile(Unfiniched(*me), os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0755)
+	log.Infoln(fmt.Sprintf("try start download range %d -> %d", start, end))
+
+	if me.IsPause {
+		return errors.New(fmt.Sprintf("download of %s is paused" , me.Id.String())) 
+	}
+
+	out, err := os.OpenFile(Unfiniched(*me), os.O_RDWR|os.O_CREATE, 0755)
 	if err != nil {
 		log.Error(err.Error())
 		return err
@@ -228,17 +239,17 @@ func (me *FILE) downloadRange(start, end int) error {
 			log.Println("Error seeking in FILE:", err)
 			return errors.New(fmt.Sprint("Error seeking in FILE:", err))
 		}
-
+ 
 		max_i := 5
 		done := false
-		for i := 0; i < max_i; i++ {
-			if _, err := io.Copy(out, resp.Body); err != nil {
+		for i := 0; !done ; i++ {
+			if WIW, err := io.Copy(out, resp.Body); WIW > 0 {
 				attempts := i + 1
 				waiting_time := (time.Second * time.Duration(attempts+utile.RandomIntByRange(-max_i, max_i)))
 				log.Infoln("waiting", waiting_time)
 				time.Sleep(waiting_time)
-				log.Warnln(fmt.Sprintf("Error copying data (attempt %d/%d): %v\n", attempts, max_i, err))
-			} else {
+				log.Warnln(fmt.Sprintf("Error copying data (attempt %d/%d): %v\nWIW = %d", attempts, max_i, err , WIW))
+				} else {
 				i = max_i + 2
 				done = true
 			}
@@ -274,28 +285,28 @@ func (me *FILE) downloadchunk(chunk []int, wg *sync.WaitGroup) error {
 	}
 	return nil
 }
-func (me *FILE) download(numThreads int) error {
 
-	if err := me.writeToAMetaData(Cfgjson(*me)); err != nil {
-		log.Errorln("\n\t", err.Error())
-		return err
-	}
+
+
+func (me *FILE) download(numThreads int) error {
 
 	ReminderPacket := me.getReminderPacket()
 
 	if len(ReminderPacket) == 0 {
-		me.finishIt()
+		log.Info("all packets are downloaded")
+		log.Info(ReminderPacket)
+		log.Info(me.Packets)
+		me.finishIt() 
 		return nil
 	}
 
 	chunks, err := utile.SplitSlice(ReminderPacket, numThreads)
-
 	if err != nil {
 		log.Errorln(err.Error())
 		return err
 	}
 
-	// the actual downlowd
+	// the actual download
 	var wg sync.WaitGroup
 	count := 0
 	for _, chunk := range chunks {
@@ -303,17 +314,45 @@ func (me *FILE) download(numThreads int) error {
 			count++
 		}
 	}
-	wg.Add(utile.Min(numThreads, count ))
+	wg.Add(utile.Min(numThreads, count))
+
+	// Use a channel to collect errors from the goroutines
+	errs := make([]error, len(chunks))
 
 	for _, chunk := range chunks {
-		go me.downloadchunk(chunk, &wg)
+		if len(chunk) > 0 {
+			go func(p_chunk []int) { 
+				// defer wg.Done() // Ensure wg.Done() is called when the goroutine finishes
+				if err := me.downloadchunk(p_chunk , &wg); err != nil {
+					log.Errorln(err.Error())
+					errs = append(errs, err) 
+				}
+			}(chunk)
+		}
 	}
+
 	wg.Wait()
-	log.Infoln(14)
 	me.writeToAMetaData(Cfgjson(*me))
+	// Check if any errors occurred
+	for _ , err := range errs {
+		if err != nil {
+			return errors.Join(errs...)
+		}
+	} 
+
 
 	return me.finishIt()
 }
+
+
+
+
+
+
+
+
+
+
 
 func (me *FILE) MkeConfig(numThreads int) error {
 	if IsExist, err := utile.PathIsExist(Cfgjson(*me)); err != nil {
@@ -330,8 +369,13 @@ func (me *FILE) MkeConfig(numThreads int) error {
 }
 
 func (me *FILE) Download(numThreads int) error {
-
-	me.MkeConfig(numThreads)
+	log.Info("\n\t\tDOWNLEADER: ", me.Id)
+	utile.PrintCallStack()
+	
+	if err := me.MkeConfig(numThreads) ; err != nil {
+		log.Errorln("\n\t", err.Error())
+		return err
+	}
 
 	if err := me.download(numThreads); err != nil {
 
@@ -339,8 +383,9 @@ func (me *FILE) Download(numThreads int) error {
 
 		return err
 	}
-	return nil
+	return nil 
 } 
+
 func (me *FILE) getReminderPacket() []int {
 	result := make([]int, 0)
 	for index, packet := range me.Packets {

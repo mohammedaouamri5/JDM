@@ -5,5 +5,9 @@
         "MIT", 
         "License", 
         "mohammedaouamri"
-    ]
+    ],
+    "[log]": {
+    "editor.largeFileOptimizations": false,
+}
+
 }

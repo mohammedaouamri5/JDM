@@ -3,23 +3,24 @@ POST  http://localhost:8080/download
 Content-Type:application/json
  
 {
-    "Name" : "skim-0.10.4-3-x86_64.pkg.tar.zst", 
+    "Name" : "skim-0.10.4-3-x86_64.pkg.tar.zst.sig", 
     "Path" : "tmp", 
-    "Url" : "https://archive.archlinux.org/packages/s/skim/skim-0.10.4-3-x86_64.pkg.tar.zst"
+    "Url" : "https://archive.archlinux.org/packages/s/skim/skim-0.10.4-3-x86_64.pkg.tar.zst.sig"
 }
 
-### 
+###   
+
 POST  http://localhost:8080/download
 Content-Type:application/json
- 
-{
-    "Name" : "plasma-workspace-wallpapers-6.0.2-3-any.pkg.tar", 
-    "Path" : "tmp", 
-    "Url" : "https://archive.archlinux.org/packages/p/plasma-workspace-wallpapers/plasma-workspace-wallpapers-6.0.2-3-any.pkg.tar.zst"
-}
-### 
 
+{ "Name" : "plasma-workspace-wallpapers-6.0.2-3-any.pkg.tar", "Path" : "tmp", "Url" : "https://archive.archlinux.org/packages/p/plasma-workspace-wallpapers/plasma-workspace-wallpapers-6.0.2-3-any.pkg.tar.zst" }
+### 
 GET  http://localhost:8080/list
 Content-Type:application/list
 
 { }
+###
+POST   http://localhost:8080/pause
+Content-Type:application/json 
+
+{ "ID": "bac14f70-044e-4eb2-92a2-9478467b644f" } 

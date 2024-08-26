@@ -2,8 +2,10 @@ package utile
 
 import (
 	"encoding/json"
+	"io"
 	"io/ioutil"
 	os "os"
+	"time"
 
 	"github.com/mattn/go-colorable"
 	log "github.com/sirupsen/logrus"
@@ -72,18 +74,39 @@ func SaveInfo() error {
 
 func initLogger() error {
 
-	log.SetOutput(colorable.NewColorableStdout())
+	
+
+
+	// Set output to both stdout and the log file
+	multiWriter := io.MultiWriter(colorable.NewColorableStdout())
+	log.SetOutput(multiWriter)
+	
+	
+	
+	field_map := log.FieldMap{
+		// log.FieldKeyTime:  "@timestamp",
+		log.FieldKeyMsg:   "@message",
+		log.FieldKeyFunc:  "@caller",
+		
+	}
 
 	// Set the formatter to include timestamp and caller information
-	log.SetFormatter(&log.TextFormatter{
-		FullTimestamp: true,
-		ForceColors:   true,
-	})
+	textformatter := log.TextFormatter{
+		FullTimestamp			:	true  ,
+		ForceColors				:	true  ,
+		ForceQuote				:	true  ,
+		PadLevelText			:	true  , 
+		DisableLevelTruncation	:	false ,
+		FieldMap			    :   field_map ,
+		TimestampFormat:time.DateTime,
+	}
+	
+	log.SetFormatter(&textformatter)
 
 	// Enable reporting caller information
 	log.SetReportCaller(true)
-	return nil
 
+	return nil
 }
 
 func Init() error {
