@@ -18,7 +18,8 @@ type InfoT struct {
 var InfoS = InfoT{}
 
 func initInfo() error {
-	file, err := os.Open("info.json")
+
+	file, err := os.OpenFile("info.json", os.O_RDWR|os.O_CREATE, 0755)
 	if err != nil {
 		log.Errorln(err.Error())
 		return err
@@ -30,7 +31,7 @@ func initInfo() error {
 		log.Errorln("Error reading file:", err.Error())
 		return err
 	}
- 
+
 	// Check if the file is empty
 	if len(content) == 0 {
 		log.Errorln("info.json is empty")
@@ -46,11 +47,10 @@ func initInfo() error {
 	return nil
 }
 
-
 func SaveInfo() error {
- 
 
-	file, err := os.OpenFile("info.json", os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0644)
+	file, err := os.OpenFile("info.json", os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0755)
+
 	if err != nil {
 		log.Errorf("Error opening file: %v", err)
 		return err
@@ -69,38 +69,32 @@ func SaveInfo() error {
 	}
 
 	defer file.Close()
-	return nil 
-}  
+	return nil
+}
 
 func initLogger() error {
-
-	
-
 
 	// Set output to both stdout and the log file
 	multiWriter := io.MultiWriter(colorable.NewColorableStdout())
 	log.SetOutput(multiWriter)
-	
-	
-	
+
 	field_map := log.FieldMap{
 		// log.FieldKeyTime:  "@timestamp",
-		log.FieldKeyMsg:   "@message",
-		log.FieldKeyFunc:  "@caller",
-		
+		log.FieldKeyMsg:  "@message",
+		log.FieldKeyFunc: "@caller",
 	}
 
 	// Set the formatter to include timestamp and caller information
 	textformatter := log.TextFormatter{
-		FullTimestamp			:	true  ,
-		ForceColors				:	true  ,
-		ForceQuote				:	true  ,
-		PadLevelText			:	true  , 
-		DisableLevelTruncation	:	false ,
-		FieldMap			    :   field_map ,
-		TimestampFormat:time.DateTime,
+		FullTimestamp:          true,
+		ForceColors:            true,
+		ForceQuote:             true,
+		PadLevelText:           true,
+		DisableLevelTruncation: false,
+		FieldMap:               field_map,
+		TimestampFormat:        time.DateTime,
 	}
-	
+
 	log.SetFormatter(&textformatter)
 
 	// Enable reporting caller information
@@ -110,7 +104,7 @@ func initLogger() error {
 }
 
 func Init() error {
-
+	os.Mkdir("./data", 0755)
 	if err := initLogger(); err != nil {
 		log.Error(err.Error())
 		return err

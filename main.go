@@ -69,11 +69,11 @@ func main() {
 			if api.Db.Size() > 0 {
 				for i := 0; ; i = (i + 1) % (api.Db.Size()) {
 					if (*(*api.Db.Data)[i]).IsDone == false && (*(*api.Db.Data)[i]).IsPause == false {
-						(*(*api.Db.Data)[i]).Download(5)
+						(*(*api.Db.Data)[i]).Download(15)
 					}
 				}
 			}
-			time.Sleep(5 * time.Second)
+			time.Sleep(15 * time.Second)
 		}
 	}() 
 
