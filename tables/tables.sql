@@ -33,3 +33,11 @@ CREATE TABLE IF NOT EXISTS Download (
     FOREIGN KEY (ID_Download_State) REFERENCES State(ID_State),
     FOREIGN KEY (ID_File_Type) REFERENCES FileType(ID_File_Type)
 );
+
+
+CREATE TABLE IF NOT EXISTS settings (
+    Working_dir TEXT ,
+    Output_dir TEXT  
+);
+
+

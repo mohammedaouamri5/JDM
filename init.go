@@ -1,31 +1,41 @@
 package main
 
 import (
-	"database/sql"
-	"log"
-	"os"
+	"io"
+	"time"
+
+	"github.com/mattn/go-colorable"
+	log "github.com/sirupsen/logrus"
 )
 
+type CustomFormatter struct{}
 
-func InitTables(db *sql.DB) error {
+func InitLog() {
+	// Set custom formatter
+	// Set output to both stdout and the log file
+	multiWriter := io.MultiWriter(colorable.NewColorableStdout())
+	log.SetOutput(multiWriter)
 
-	files := []string{
-		"./tables/tables.sql",
-		"./tables/fill.sql", 
+	field_map := log.FieldMap{
+		// log.FieldKeyTime:  "@timestamp",
+		log.FieldKeyMsg:  "@message",
+		log.FieldKeyFunc: "@caller",
 	}
 
-	for _, file := range files {
-		sqlFile, err := os.ReadFile(file)
-		
-		if err != nil {
-			log.Fatal(err)
-		} else if _, err := db.Exec(string(sqlFile)); err != nil {
-			log.Fatal(err)
-			return err
-		} else {
-			log.Println("init", file)
-		}
+	// Set the formatter to include timestamp and caller information
+	textformatter := log.TextFormatter{
+		FullTimestamp:          true,
+		ForceColors:            true,
+		ForceQuote:             true,
+		PadLevelText:           true,
+		DisableLevelTruncation: false,
+		FieldMap:               field_map,
+		TimestampFormat:        time.DateTime,
 	}
 
-	return nil
+	log.SetFormatter(&textformatter)
+
+	// Enable reporting caller information
+	log.SetReportCaller(true)
+
 }
