@@ -59,8 +59,8 @@ func (me *Downlaod) New(p_remote string, p_working_dir *string, p_output_dir *st
 	name, err := getTheName(p_remote, header)
 	logrus.Info("the name is : ", name)
 
-	me.WorkingFilePath = (*p_working_dir) + "/" + FileType + name
-	me.OutputFilePath = (*p_output_dir) + "/" + FileType + name
+	me.WorkingFilePath = (*p_working_dir) + "/" + FileType + "/" + name + ".work"
+	me.OutputFilePath = (*p_output_dir) + "/" + FileType + "/" + name
 
 	/*
 		CREATE TABLE IF NOT EXISTS Download (
@@ -98,43 +98,62 @@ func (me *Downlaod) New(p_remote string, p_working_dir *string, p_output_dir *st
 	err = DB().QueryRow(sql, args...).Scan(&me.IdDownlaod)
 	if err != nil {
 		logrus.Fatalf("Failed to insert and return ID: %v", err)
-	}else {
-		logrus.Info("The Id : ", me.IdDownlaod) ; 
+	} else {
+		logrus.Info("The Id : ", me.IdDownlaod)
 	}
-	
+
 	DB().Exec(sql, args...)
 	return *me
 }
 
 func (me *Downlaod) Init() error {
-
-
-
-	if err := _MkDirForFile(me.WorkingFilePath) ; err != nil {
+	if err := _MkDirForFile(me.WorkingFilePath); err != nil {
 		logrus.Fatal(err.Error())
-		return err 
+		return err
 	}
 
-	if err := _MkDirForFile(me.OutputFilePath) ; err != nil {
+	if err := _MkDirForFile(me.OutputFilePath); err != nil {
 		logrus.Fatal(err.Error())
-		return err 
+		return err
 	}
-	file , err := os.Create(me.WorkingFilePath)
+	file, err := os.Create(me.WorkingFilePath)
 	defer file.Close()
 	if err != nil {
-		logrus.Error(err.Error()) 
+		logrus.Error(err.Error())
+		return err
 	}
 
+	sql, args, err := sq.
+		Update("Download").
+		Set("ID_Download_State",
+			sq.Select("ID_State").
+				From("State").
+				Where("Name LIKE ?", "%downl__d%"),
+		).
+		Where(sq.Eq{"ID_Download": me.IdDownlaod}).
+		ToSql()
 
-	return nil	
+	if err != nil {
+		logrus.Fatal(err.Error())
+		return err
+	}
+
+	result, err := DB().Exec(sql, args...)
+
+	if err != nil {
+		logrus.Fatal(err.Error())
+		return err
+	}
+
+	logrus.Infof("result : %+v", result)
+	return nil
 }
 
-func _MkDirForFile(p_file_path string ) error  {
+func _MkDirForFile(p_file_path string) error {
+	p_file_pathSplited := strings.Split(p_file_path, "/")
+	WorkingiDirPath := p_file_pathSplited[:len(p_file_pathSplited)-1]
 
-	p_file_pathSplited := strings.Split(p_file_path, "/"); 
-	WorkingiDirPath := p_file_pathSplited[len(p_file_pathSplited) - 1 ] 
-	
-	return os.MkdirAll(WorkingiDirPath , 0666)
+	return os.MkdirAll(strings.Join(WorkingiDirPath, "/"), 0777)
 }
 func getTheHead(p_remote string) (http.Header, error) {
 	// See If The Head Is Supported
