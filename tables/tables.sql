@@ -18,6 +18,7 @@ CREATE TABLE IF NOT EXISTS Packet (
     Start INTEGER,
     End INTEGER,
     ID_Packet_State INTEGER,
+    ID_Download INTEGER, 
     FOREIGN KEY (ID_Packet_State) REFERENCES State(ID_State)
 );
 
@@ -37,7 +38,8 @@ CREATE TABLE IF NOT EXISTS Download (
 
 CREATE TABLE IF NOT EXISTS settings (
     Working_dir TEXT ,
-    Output_dir TEXT  
+    Output_dir TEXT , 
+    PacketSize INTEGER 
 );
 
 

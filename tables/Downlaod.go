@@ -5,17 +5,20 @@ import (
 	"errors"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
 	sq "github.com/Masterminds/squirrel"
 	_ "github.com/mattn/go-sqlite3"
+	"github.com/mohammedaouamri5/JDM-back/db"
 	. "github.com/mohammedaouamri5/JDM-back/db"
 	"github.com/sirupsen/logrus"
 )
 
 var (
-	ECanGetHeader = errors.New("Cant Get The Header")
+	ECantGetHeader    = errors.New("Cant Get The Header")
+	ECantCreatePacket = errors.New("Cant Get The Header")
 )
 
 type Downlaod struct {
@@ -41,7 +44,7 @@ func (me *Downlaod) New(p_remote string, p_working_dir *string, p_output_dir *st
 	}
 
 	header, err := getTheHead(p_remote)
-	if errors.Is(err, ECanGetHeader) {
+	if errors.Is(err, ECantGetHeader) {
 		logrus.Error(err.Error())
 		// TODO : Downlaod directory
 	}
@@ -96,6 +99,7 @@ func (me *Downlaod) New(p_remote string, p_working_dir *string, p_output_dir *st
 		ToSql()
 
 	err = DB().QueryRow(sql, args...).Scan(&me.IdDownlaod)
+
 	if err != nil {
 		logrus.Fatalf("Failed to insert and return ID: %v", err)
 	} else {
@@ -116,9 +120,8 @@ func (me *Downlaod) Init() error {
 		logrus.Fatal(err.Error())
 		return err
 	}
-	file, err := os.Create(me.WorkingFilePath)
-	defer file.Close()
-	if err != nil {
+
+	if _, err := os.Create(me.WorkingFilePath); err != nil {
 		logrus.Error(err.Error())
 		return err
 	}
@@ -138,15 +141,16 @@ func (me *Downlaod) Init() error {
 		return err
 	}
 
-	result, err := DB().Exec(sql, args...)
+	_, err = DB().Exec(sql, args...)
 
 	if err != nil {
 		logrus.Fatal(err.Error())
 		return err
 	}
 
-	logrus.Infof("result : %+v", result)
+	me.creat_packages_for_http_protochoe()
 	return nil
+
 }
 
 func _MkDirForFile(p_file_path string) error {
@@ -155,6 +159,59 @@ func _MkDirForFile(p_file_path string) error {
 
 	return os.MkdirAll(strings.Join(WorkingiDirPath, "/"), 0777)
 }
+
+var GetTheHead = getTheHead
+
+func (me *Downlaod) creat_packages_for_http_protochoe() error {
+	header, err := GetTheHead(me.Remote)
+
+	if err != nil {
+		logrus.Error(err.Error())
+		return err
+	}
+
+	ranges, size := header.Get("Accept-Ranges"), header.Get("Content-Length")
+	logrus.WithFields(logrus.Fields{"range": ranges, "size": size}).Info()
+
+	if ranges == "" || size == "" {
+		logrus.Error(ECantCreatePacket.Error())
+		return ECantCreatePacket
+	}
+	logrus.Infof("%++v", Settings())
+	size_int, err := strconv.Atoi(size)
+
+	queryBuilder := sq.Insert("Packet").
+		Columns("Start", "End", "ID_Packet_State", "ID_Download")
+	/*
+		CREATE TABLE IF NOT EXISTS Packet (
+			ID_Packet INTEGER PRIMARY KEY AUTOINCREMENT,
+			Start INTEGER,
+			End INTEGER,
+			ID_Packet_State INTEGER,
+			FOREIGN KEY (ID_Packet_State) REFERENCES State(ID_State)
+		);
+	*/
+
+	downloading_id := State{}.GET("dow").ID_State
+	for i := 0; i < size_int; i += Settings().PacketSize {
+		queryBuilder = queryBuilder.Values(i, min(i-1+Settings().PacketSize, size_int), downloading_id, me.IdDownlaod)
+	}
+
+	query, args, err := queryBuilder.ToSql()
+	if err != nil {
+		return err
+	}
+
+	_, err = db.DB().Exec(query, args...)
+
+	if err != nil {
+		logrus.Info(err.Error())
+		return err
+	}
+
+	return err
+}
+
 func getTheHead(p_remote string) (http.Header, error) {
 	// See If The Head Is Supported
 	client := &http.Client{}
@@ -202,9 +259,9 @@ func getTheHead(p_remote string) (http.Header, error) {
 		// If the context was canceled (due to timeout), handle it here
 		if errors.Is(err, context.DeadlineExceeded) {
 			logrus.Error("Request timed out")
-			return nil, errors.Join(err, ECanGetHeader)
+			return nil, errors.Join(err, ECantGetHeader)
 		}
-		logrus.Error("Error executing request:", errors.Join(err, ECanGetHeader))
+		logrus.Error("Error executing request:", errors.Join(err, ECantGetHeader))
 		return nil, err
 	}
 
@@ -215,7 +272,7 @@ func getTheHead(p_remote string) (http.Header, error) {
 }
 
 func getTheName(p_remote string, p_header http.Header) (string, error) {
-	// see if the name in on the header
+	// see if the name in on the headerHeader
 	if p_header != nil {
 		if ContentDisposition := p_header.Get("Content-Disposition"); ContentDisposition != "" {
 			ContentDispositionSplites := strings.Split(ContentDisposition, "=")

@@ -8,4 +8,4 @@ INSERT INTO FileType (name)
 VALUES ("undefined"), ("text"), ("binary"), ("image"), ("audio"), ("video");
 
 INSERT INTO SETTINGS 
-VALUES ("./tmp/working", "./tmp/output");
+VALUES ("./tmp/working", "./tmp/output" , 40960);

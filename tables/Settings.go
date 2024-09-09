@@ -12,6 +12,7 @@ import (
 type _Settings struct {
 	Working_dir string
 	Output_dir  string
+    PacketSize int 
 }
 
 var (
@@ -37,6 +38,7 @@ func select_Settings() {
 		err = rows.Scan(
 			&instance.Working_dir,
 			&instance.Output_dir,
+			&instance.PacketSize,
 		)
 		if err != nil {
 			logrus.Fatal(err)

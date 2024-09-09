@@ -1,0 +1,175 @@
+package http
+
+import (
+	"errors"
+	"fmt"
+	"io"
+	netHttp "net/http"
+	"os"
+	"sync"
+
+	"github.com/Masterminds/squirrel"
+	"github.com/mohammedaouamri5/JDM-back/db"
+	"github.com/mohammedaouamri5/JDM-back/tables"
+	"github.com/sirupsen/logrus"
+)
+
+func Downlaod(p_downlaod tables.Downlaod) {
+	_, err := tables.GetTheHead(p_downlaod.Remote)
+	if errors.Is(err, tables.ECantGetHeader) {
+		downlaod_without_range(p_downlaod)
+	}
+	downlaod_with_range(p_downlaod)
+}
+
+var done_id int8
+
+func downlaod_with_range(p_downlaod tables.Downlaod) error {
+	NbChunks , ChunkSize := 6 , 3
+	chunks, err := getBunchOfChunks(p_downlaod.IdDownlaod, NbChunks , ChunkSize)
+
+	done_id = tables.State{}.GET("done").ID_State
+
+	if err != nil {
+		logrus.Error(err.Error())
+		return err
+	}
+	var wg  sync.WaitGroup
+	wg.Add(ChunkSize)	
+	for _, packets := range chunks {
+		go download_packets(packets, p_downlaod , &wg)
+	}
+	wg.Wait()
+	return nil
+}
+
+func download_packets(p_packets tables.Packets, p_download tables.Downlaod , worker * sync.WaitGroup) {
+	defer worker.Done()
+
+	for _, packet := range p_packets {
+		if packet.IsNULL() {continue; }
+		err := download_packet(packet, p_download)
+		if err != nil {
+			logrus.Error(err.Error())
+		}
+
+		sql, args, err := squirrel.Update("Packet").Set("ID_Packet_State", done_id).Where(squirrel.Eq{
+			"ID_Packet": packet.ID_Packet,
+		}).ToSql()
+
+		_, err = db.DB().Exec(sql, args...)
+		if err != nil {
+			logrus.Error(err.Error())
+		}
+	}
+}
+
+func download_packet(p_packet tables.Packet, p_download tables.Downlaod) error {
+	// Open the output file in write-only mode
+	out, err := os.OpenFile(p_download.WorkingFilePath, os.O_WRONLY, 0777)
+	if err != nil {
+		logrus.Error("Failed to open output file: ", err)
+		return err
+	}
+	defer out.Close()
+
+	// Create an HTTP request to download the byte range
+	client := &netHttp.Client{}
+	req, err := netHttp.NewRequest("GET", p_download.Remote, nil)
+	if err != nil {
+		logrus.Error("Failed to create request: ", err)
+		return err
+	}
+
+	// Set the Range header for partial download
+	rangeHeader := fmt.Sprintf("bytes=%d-%d", p_packet.Start, p_packet.End)
+	req.Header.Set("Range", rangeHeader)
+	logrus.Info("Requesting byte range: ", rangeHeader)
+
+	// Make the HTTP request
+	resp, err := client.Do(req)
+	if err != nil {
+		logrus.Error("Failed to make HTTP request: ", err)
+		return err
+	}
+	defer resp.Body.Close()
+
+	// Ensure that the server supports range requests
+	if resp.StatusCode != netHttp.StatusPartialContent {
+		logrus.Error("Server does not support range requests or invalid range")
+		return err
+	}
+
+	// Move the file pointer to the appropriate position
+	if _, err := out.Seek(int64(p_packet.Start), 0); err != nil {
+		logrus.Error("Failed to seek in the output file: ", err)
+		return err
+	}
+
+	// Copy the downloaded bytes to the file
+	written, err := io.Copy(out, resp.Body)
+	if err != nil {
+		logrus.Error("Failed to write data to file: ", err)
+		return err
+	}
+
+	logrus.Infof("Downloaded %d bytes for packet (%d) [%d-%d] ", written,p_packet.ID_Packet , p_packet.Start, p_packet.End)
+	return nil
+}
+
+func getBunchOfChunks(ID_Downlaod int, pNbChunks int, pChunkSize int) (tables.Chunck, error) {
+	if pNbChunks <= 0 || pChunkSize <= 0 {
+		return nil, fmt.Errorf("both pNbChunks and pChunkSize must be positive integers")
+	}
+
+	result := make(tables.Chunck, pNbChunks)
+	for i := 0; i < pNbChunks; i++ {
+		result[i] = make(tables.Packets, pChunkSize)
+	}
+
+	limit := pNbChunks * pChunkSize
+
+	__packets, err := tables.Packets{}.Select(int8(limit), ID_Downlaod)
+	if err != nil {
+		logrus.Fatal(err.Error())
+		return nil, err
+	}
+	_len := len(__packets)
+
+	for i := 0; i < _len; i++ {
+		result[int8(i/pNbChunks)][i%pChunkSize] = __packets[i]
+	}
+	for i := _len; i < limit; i++ {
+		result[int8(i/pNbChunks)][i%pChunkSize] = tables.Packets{}.NULL()  
+	}	
+	return result, nil
+
+}
+func downlaod_without_range(p_downlaod tables.Downlaod) error {
+	// Create the file
+	out, err := os.OpenFile(p_downlaod.WorkingFilePath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0755)
+	if err != nil {
+		return err
+	}
+	defer out.Close()
+
+	// Get the data
+	resp, err := netHttp.Get(p_downlaod.Remote)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	// Check server response
+	if resp.StatusCode != netHttp.StatusOK {
+		err := (fmt.Errorf("bad status: %s", resp.Status))
+		return err
+	}
+
+	// Writer the body to file
+	_, err = io.Copy(out, resp.Body)
+	if err != nil {
+		return err
+	}
+	return nil
+}

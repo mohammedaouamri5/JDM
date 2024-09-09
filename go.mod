@@ -5,9 +5,11 @@ go 1.22.5
 require github.com/sirupsen/logrus v1.9.3
 
 require (
+	github.com/fatih/structs v1.1.0 // indirect
 	github.com/lann/builder v0.0.0-20180802200727-47ae307949d0 // indirect
 	github.com/lann/ps v0.0.0-20150810152359-62de8c46ede0 // indirect
 	github.com/mattn/go-isatty v0.0.16 // indirect
+	github.com/sahilm/fuzzy v0.1.1 // indirect
 )
 
 require (

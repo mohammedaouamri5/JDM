@@ -37,5 +37,4 @@ func InitLog() {
 
 	// Enable reporting caller information
 	log.SetReportCaller(true)
-
 }
