@@ -18,5 +18,6 @@ func main() {
 	println()
 	println()
 	table.Init()
+	table.IdDownlaodStatus = 2 
 	HTTP.Downlaod(*table)
 }

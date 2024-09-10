@@ -7,6 +7,7 @@ import (
 	netHttp "net/http"
 	"os"
 	"sync"
+	"time"
 
 	"github.com/Masterminds/squirrel"
 	"github.com/mohammedaouamri5/JDM-back/db"
@@ -26,31 +27,39 @@ var done_id int8
 
 func downlaod_with_range(p_downlaod tables.Downlaod) error {
 	NbChunks, ChunkSize := 2, 3
+	logrus.WithFields(logrus.Fields{
+		"curent id":     p_downlaod.IdDownlaodStatus,
+		"download id":   (tables.State{}.GET("dow").ID_State),
+		"download name": (tables.State{}.GET("dow").Name),
+	}).Info()
 
-	for chunks, err := getBunchOfChunks(p_downlaod.IdDownlaod, NbChunks, ChunkSize); chunks != nil; chunks, err = getBunchOfChunks(p_downlaod.IdDownlaod, NbChunks, ChunkSize) {
+	if (p_downlaod.IdDownlaodStatus == int(tables.State{}.GET("dow").ID_State)) {
+		for chunks, err := getBunchOfChunks(p_downlaod.IdDownlaod, NbChunks, ChunkSize); (chunks != nil) && (p_downlaod.IdDownlaodStatus == int(tables.State{}.GET("dow").ID_State)); chunks, err = getBunchOfChunks(p_downlaod.IdDownlaod, NbChunks, ChunkSize) {
 
-		logrus.Info("len = ", len(chunks))
-		logrus.Infof("chunk = %++v", (chunks))
-		done_id = tables.State{}.GET("done").ID_State
+			logrus.Info("len = ", len(chunks))
+			logrus.Infof("chunk = %++v", (chunks))
+			done_id = tables.State{}.GET("done").ID_State
 
-		if err != nil {
-			logrus.Error(err.Error())
-			return err
+			if err != nil {
+				logrus.Error(err.Error())
+				return err
+			}
+			var wg sync.WaitGroup
+			wg.Add(NbChunks)
+			for _, packets := range chunks {
+				go download_packets(packets, p_downlaod, &wg)
+			}
+			wg.Wait()
+			logrus.Info("Done waiting")
 		}
-		var wg sync.WaitGroup
-		wg.Add(NbChunks)
-		for _, packets := range chunks {
-			download_packets(packets, p_downlaod, &wg)
-		}
-		wg.Wait()
-		logrus.Info("Done waiting")
 	}
 	return nil
 }
 
 func download_packets(p_packets tables.Packets, p_download tables.Downlaod, worker *sync.WaitGroup) {
 	defer worker.Done()
-
+	logrus.Info("a worder")
+	time.Sleep(10 * time.Second)
 	for _, packet := range p_packets {
 		if packet.IsNULL() {
 			continue
@@ -159,7 +168,6 @@ func getBunchOfChunks(ID_Downlaod int, pNbChunks int, pChunkSize int) (tables.Ch
 		"limit":     limit,
 	}).Info()
 	return result, nil
-
 }
 func downlaod_without_range(p_downlaod tables.Downlaod) error {
 	// Create the file
