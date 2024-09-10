@@ -25,29 +25,36 @@ func Downlaod(p_downlaod tables.Downlaod) {
 var done_id int8
 
 func downlaod_with_range(p_downlaod tables.Downlaod) error {
-	NbChunks , ChunkSize := 6 , 3
-	chunks, err := getBunchOfChunks(p_downlaod.IdDownlaod, NbChunks , ChunkSize)
+	NbChunks, ChunkSize := 2, 3
 
-	done_id = tables.State{}.GET("done").ID_State
+	for chunks, err := getBunchOfChunks(p_downlaod.IdDownlaod, NbChunks, ChunkSize); chunks != nil; chunks, err = getBunchOfChunks(p_downlaod.IdDownlaod, NbChunks, ChunkSize) {
 
-	if err != nil {
-		logrus.Error(err.Error())
-		return err
+		logrus.Info("len = ", len(chunks))
+		logrus.Infof("chunk = %++v", (chunks))
+		done_id = tables.State{}.GET("done").ID_State
+
+		if err != nil {
+			logrus.Error(err.Error())
+			return err
+		}
+		var wg sync.WaitGroup
+		wg.Add(NbChunks)
+		for _, packets := range chunks {
+			download_packets(packets, p_downlaod, &wg)
+		}
+		wg.Wait()
+		logrus.Info("Done waiting")
 	}
-	var wg  sync.WaitGroup
-	wg.Add(ChunkSize)	
-	for _, packets := range chunks {
-		go download_packets(packets, p_downlaod , &wg)
-	}
-	wg.Wait()
 	return nil
 }
 
-func download_packets(p_packets tables.Packets, p_download tables.Downlaod , worker * sync.WaitGroup) {
+func download_packets(p_packets tables.Packets, p_download tables.Downlaod, worker *sync.WaitGroup) {
 	defer worker.Done()
 
 	for _, packet := range p_packets {
-		if packet.IsNULL() {continue; }
+		if packet.IsNULL() {
+			continue
+		}
 		err := download_packet(packet, p_download)
 		if err != nil {
 			logrus.Error(err.Error())
@@ -113,7 +120,7 @@ func download_packet(p_packet tables.Packet, p_download tables.Downlaod) error {
 		return err
 	}
 
-	logrus.Infof("Downloaded %d bytes for packet (%d) [%d-%d] ", written,p_packet.ID_Packet , p_packet.Start, p_packet.End)
+	logrus.Infof("Downloaded %d bytes for packet (%d) [%d-%d] ", written, p_packet.ID_Packet, p_packet.Start, p_packet.End)
 	return nil
 }
 
@@ -136,12 +143,21 @@ func getBunchOfChunks(ID_Downlaod int, pNbChunks int, pChunkSize int) (tables.Ch
 	}
 	_len := len(__packets)
 
+	if _len == 0 {
+		return nil, nil
+	}
 	for i := 0; i < _len; i++ {
-		result[int8(i/pNbChunks)][i%pChunkSize] = __packets[i]
+		result[int8(i/pChunkSize)][i%pChunkSize] = __packets[i]
 	}
 	for i := _len; i < limit; i++ {
-		result[int8(i/pNbChunks)][i%pChunkSize] = tables.Packets{}.NULL()  
-	}	
+		result[int8(i/pChunkSize)][i%pChunkSize] = tables.Packets{}.NULL()
+	}
+	logrus.WithFields(logrus.Fields{
+		"result":    result,
+		"__packets": __packets,
+		"_len":      _len,
+		"limit":     limit,
+	}).Info()
 	return result, nil
 
 }

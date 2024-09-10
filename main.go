@@ -12,7 +12,7 @@ func main() {
 	DB()      // No Error handling yet
 	tables.State{}.Pull()
 	var table = (&tables.Downlaod{})
-	table.New("http://212.183.159.230/5MB.zip", nil, nil)
+	table.New("https://archive.archlinux.org/packages/s/skim/skim-0.10.4-3-x86_64.pkg.tar.zst", nil, nil)
 	println()
 	println()
 	println()
