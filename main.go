@@ -1,8 +1,12 @@
 package main
 
 import (
+	"net/http"
+
+	"github.com/gin-gonic/gin"
 	_ "github.com/mattn/go-sqlite3"
-	HTTP "github.com/mohammedaouamri5/JDM-back/Downlaod/HTTP"
+	downlaod "github.com/mohammedaouamri5/JDM-back/Downlaod"
+	"github.com/mohammedaouamri5/JDM-back/api"
 	. "github.com/mohammedaouamri5/JDM-back/db"
 	"github.com/mohammedaouamri5/JDM-back/tables"
 )
@@ -11,13 +15,10 @@ func main() {
 	InitLog() // No Error handling yet
 	DB()      // No Error handling yet
 	tables.State{}.Pull()
-	var table = (&tables.Downlaod{})
-	table.New("https://archive.archlinux.org/packages/s/skim/skim-0.10.4-3-x86_64.pkg.tar.zst", nil, nil)
-	println()
-	println()
-	println()
-	println()
-	table.Init()
-	table.IdDownlaodStatus = 2 
-	HTTP.Downlaod(*table)
+	go downlaod.DownloadLiciner()	
+	router := gin.Default()
+	router.GET("/BRUH" , func (c * gin.Context ) { c.JSON(http.StatusOK , gin.H{"messege": "BRUH"}) }) 
+	router.POST("/Download/HTTP/start" , api.POSTDownlaodHTTP)
+	router.POST("/Download/HTTP/pause" , api.POSTPause)
+	router.Run()
 }

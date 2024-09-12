@@ -3,16 +3,14 @@ package http
 import (
 	"errors"
 	"fmt"
-	"io"
-	netHttp "net/http"
-	"os"
-	"sync"
-	"time"
-
 	"github.com/Masterminds/squirrel"
 	"github.com/mohammedaouamri5/JDM-back/db"
 	"github.com/mohammedaouamri5/JDM-back/tables"
 	"github.com/sirupsen/logrus"
+	"io"
+	netHttp "net/http"
+	"os"
+	"sync"
 )
 
 func Downlaod(p_downlaod tables.Downlaod) {
@@ -25,6 +23,22 @@ func Downlaod(p_downlaod tables.Downlaod) {
 
 var done_id int8
 
+func stilldownloading(p_downlaod tables.Downlaod) bool {
+	var state int
+	sql, args, _ := squirrel.Select("ID_Download_State").From("Download").Where(squirrel.Eq{"ID_Download": p_downlaod.IdDownlaod}).ToSql()
+	db.DB().QueryRow(sql, args...).Scan(&state)
+	down_id := int(tables.State{}.GET("dow").ID_State)
+	if state !=	 down_id{
+	logrus.Info("PAUSE")
+	println()
+	println()
+	println()
+	println()
+	println()
+	println()
+	}
+	return state == down_id
+}
 func downlaod_with_range(p_downlaod tables.Downlaod) error {
 	NbChunks, ChunkSize := 2, 3
 	logrus.WithFields(logrus.Fields{
@@ -32,11 +46,11 @@ func downlaod_with_range(p_downlaod tables.Downlaod) error {
 		"download id":   (tables.State{}.GET("dow").ID_State),
 		"download name": (tables.State{}.GET("dow").Name),
 	}).Info()
-
-	if (p_downlaod.IdDownlaodStatus == int(tables.State{}.GET("dow").ID_State)) {
-		for chunks, err := getBunchOfChunks(p_downlaod.IdDownlaod, NbChunks, ChunkSize); (chunks != nil) && (p_downlaod.IdDownlaodStatus == int(tables.State{}.GET("dow").ID_State)); chunks, err = getBunchOfChunks(p_downlaod.IdDownlaod, NbChunks, ChunkSize) {
+	if (stilldownloading(p_downlaod) ) {
+		for chunks, err := getBunchOfChunks(p_downlaod.IdDownlaod, NbChunks, ChunkSize); (chunks != nil) && (stilldownloading(p_downlaod)); chunks, err = getBunchOfChunks(p_downlaod.IdDownlaod, NbChunks, ChunkSize) {
 
 			logrus.Info("len = ", len(chunks))
+			logrus.Infof("chunk = %++v", (chunks))
 			logrus.Infof("chunk = %++v", (chunks))
 			done_id = tables.State{}.GET("done").ID_State
 
@@ -58,8 +72,7 @@ func downlaod_with_range(p_downlaod tables.Downlaod) error {
 
 func download_packets(p_packets tables.Packets, p_download tables.Downlaod, worker *sync.WaitGroup) {
 	defer worker.Done()
-	logrus.Info("a worder")
-	time.Sleep(10 * time.Second)
+	logrus.Info("worder")
 	for _, packet := range p_packets {
 		if packet.IsNULL() {
 			continue

@@ -32,15 +32,20 @@ type Downlaod struct {
 }
 
 // FIXME : The New function just handele the cas where the pretocol is ```http``` and can't determend the type Yet
-func (me *Downlaod) New(p_remote string, p_working_dir *string, p_output_dir *string) Downlaod {
+func (me * Downlaod) New(
+	p_remote string,
+	p_working_dir string,
+	p_output_dir string,
+	p_name string,
+) Downlaod {
 	me.IdDownlaodStatus = 1
 	me.Remote = p_remote
 
-	if p_output_dir == nil {
-		p_output_dir = &Settings().Output_dir
+	if p_output_dir == "" {
+		p_output_dir = Settings().Output_dir
 	}
-	if p_working_dir == nil {
-		p_working_dir = &Settings().Working_dir
+	if p_working_dir == "" {
+		p_working_dir = Settings().Working_dir
 	}
 
 	header, err := getTheHead(p_remote)
@@ -59,11 +64,13 @@ func (me *Downlaod) New(p_remote string, p_working_dir *string, p_output_dir *st
 		logrus.Error(err.Error())
 	}
 
-	name, err := getTheName(p_remote, header)
-	logrus.Info("the name is : ", name)
+	if p_name == "" {
+		p_name, err = getTheName(p_remote, header)
+	}
 
-	me.WorkingFilePath = (*p_working_dir) + "/" + FileType + "/" + name + ".work"
-	me.OutputFilePath = (*p_output_dir) + "/" + FileType + "/" + name
+	logrus.Info("the name is : ", p_name)
+	me.WorkingFilePath = (p_working_dir) + "/" + FileType + "/" + p_name + ".work"
+	me.OutputFilePath = (p_output_dir) + "/" + FileType + "/" + p_name
 
 	/*
 		CREATE TABLE IF NOT EXISTS Download (
@@ -87,7 +94,8 @@ func (me *Downlaod) New(p_remote string, p_working_dir *string, p_output_dir *st
 			"ID_File_Type",
 			"Working_file_path",
 			"Output_file_path",
-			"Remote").
+			"Remote", 
+		).
 		Values(
 			me.IdDownlaodType,
 			me.IdDownlaodStatus,
@@ -97,7 +105,6 @@ func (me *Downlaod) New(p_remote string, p_working_dir *string, p_output_dir *st
 			me.Remote).
 		Suffix("RETURNING ID_Download").
 		ToSql()
-
 	err = DB().QueryRow(sql, args...).Scan(&me.IdDownlaod)
 
 	if err != nil {
@@ -106,7 +113,6 @@ func (me *Downlaod) New(p_remote string, p_working_dir *string, p_output_dir *st
 		logrus.Info("The Id : ", me.IdDownlaod)
 	}
 
-	DB().Exec(sql, args...)
 	return *me
 }
 
